@@ -20,4 +20,27 @@ const renderder = value => {
     MyReact.render(element, document.getElementById('root'));
 }
 
-renderder("haha")
+// renderder("haha")
+
+function App() {
+    const [number, setNumber] = MyReact.useState(1)
+    const [visiable, setVisiable] = MyReact.useState(true)
+
+    return (
+        <div>
+            <button onClick={() => {
+                setNumber(number + 1)
+                setVisiable(!visiable)
+            }}> click me
+            </button>
+            <h1>
+                {number}
+            </h1>
+            {
+                visiable ? <h1>can you see me?</h1> : null
+            }
+        </div>
+    )
+}
+
+MyReact.render(<App/>, document.getElementById('root'))

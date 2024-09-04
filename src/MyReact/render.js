@@ -5,6 +5,8 @@ let wipRoot = null;
 let currentRoot = null;
 
 let deletion = []
+let wipFiber = {}
+let hooksIndex = 0;
 
 
 function reconcileChildren(wipFiber, element) {
@@ -66,8 +68,44 @@ function reconcileChildren(wipFiber, element) {
     }
 }
 
-// execute and return task unit
-function performUnitOfWork(fiber) {
+export function useState(initial) {
+    const oldHook = wipFiber?.alternate?.hooks?.[hooksIndex]
+    const hook = {
+        state: oldHook ? oldHook.state : initial,
+        queue: []
+    }
+
+    const actions = oldHook ? oldHook.queue : []
+    actions.forEach(action => {
+        hook.state = action
+    })
+    const setState = action => {
+        // record the last operation
+        hook.queue.push(action)
+        wipRoot = {
+            dom: currentRoot.dom,
+            props: currentRoot.props,
+            alternate: currentRoot
+        }
+        nextUnitOfWork = wipRoot
+        deletion = []
+
+    }
+    wipFiber.hooks.push(hook)
+    hooksIndex++
+
+    return [hook.state, setState]
+}
+
+function updateFuncComponent(fiber) {
+    wipFiber = fiber;
+    wipFiber.hooks = []
+    hooksIndex = 0
+    const child = [fiber.type(fiber.props)]
+    reconcileChildren(fiber, child)
+}
+
+function updateHostComponent(fiber) {
     // execute task unit
     // transform a reactDom to a real dom node
     if (!fiber.dom) {
@@ -78,6 +116,16 @@ function performUnitOfWork(fiber) {
     // parent \ child \ sibling
     const element = fiber?.props?.children
     reconcileChildren(fiber, element)
+}
+
+// execute and return task unit
+function performUnitOfWork(fiber) {
+    const isFunctionComponent = fiber.type instanceof Function
+    if (isFunctionComponent) {
+        updateFuncComponent(fiber)
+    } else {
+        updateHostComponent(fiber)
+    }
 
     // return next task unit
     if (fiber.child) {
@@ -138,13 +186,28 @@ function updateDom(dom, prevProps, nextProps) {
         })
 }
 
+
+function commitDeletion(fiber, domParent) {
+    if (fiber.dom) {
+        domParent.removeChild(fiber.dom)
+    } else {
+        commitDeletion(fiber.child, domParent)
+    }
+}
+
 // real link the virtual dom to real dom
 function commitWork(fiber) {
     // commit real dom
     if (!fiber) return
 
-    const domParent = fiber.parent.dom
+    // const domParent = fiber.parent.dom
     // domParent.appendChild(fiber.dom)
+    let domParentFiber = fiber.parent;
+    while (!domParentFiber.dom) {
+        domParentFiber = domParentFiber.parent;
+    }
+    const domParent = domParentFiber.dom;
+
 
     // operation depends on fiber's effectTag
     if (fiber.effectTag === 'PLACEMENT' && fiber.dom != null) {
@@ -152,7 +215,8 @@ function commitWork(fiber) {
     } else if (fiber.effectTag === 'UPDATE' && fiber.dom != null) {
         updateDom(fiber.dom, fiber.alternate.props, fiber.props)
     } else if (fiber.effectTag === 'DELETION') {
-        domParent.removeChild(fiber.dom)
+        // domParent.removeChild(fiber.dom)
+        commitDeletion(fiber, domParent)
     }
 
 
@@ -180,7 +244,6 @@ function workLoop(deadLine) {
     while (nextUnitOfWork && shouldVield) {
         nextUnitOfWork = performUnitOfWork(nextUnitOfWork)
         shouldVield = deadLine.timeRemaining() > 1; // get current frame's remaining time
-        // debugger
     }
 
     if (!nextUnitOfWork && wipRoot) {
@@ -211,7 +274,7 @@ function createDom(fiber) {
     return dom
 }
 
-export default function render(element, container) {
+export function render(element, container) {
 
     // create a root node
     wipRoot = {
