@@ -1,4 +1,6 @@
 let nextUnitOfWork = null;
+// work in progress root
+let wipRoot = null;
 
 // execute and return task unit
 function performUnitOfWork(fiber) {
@@ -6,10 +8,6 @@ function performUnitOfWork(fiber) {
     // transform a reactDom to a real dom node
     if (!fiber.dom) {
         fiber.dom = createDom(fiber)
-    }
-    // add to parent
-    if (fiber.parent) {
-        fiber.parent.dom.appendChild(fiber.dom)
     }
 
     // creating its children fiber node for current fiber node
@@ -49,12 +47,36 @@ function performUnitOfWork(fiber) {
     }
 }
 
+// real link the virtual dom to real dom
+function commitWork(fiber) {
+    // commit real dom
+    if (!fiber) return
+
+    const domParent = fiber.parent.dom
+    domParent.appendChild(fiber.dom)
+    commitWork(fiber.child)
+    commitWork(fiber.sibling)
+}
+
+// commit all dom in one time when all task unit are done f
+function commitRoot() {
+    // render real dom
+    commitWork(wipRoot.child)
+    wipRoot = null;
+}
+
+
 function workLoop(deadLine) {
     let shouldVield = true;
 
     while (nextUnitOfWork && shouldVield) {
         nextUnitOfWork = performUnitOfWork(nextUnitOfWork)
         shouldVield = deadLine.timeRemaining() > 1; // get current frame's remaining time
+        debugger
+    }
+
+    if (!nextUnitOfWork && wipRoot) {
+        commitRoot()
     }
 
     // register
@@ -70,7 +92,7 @@ function createDom(element) {
             document.createTextNode('') :
             document.createElement(element.type)
 
-    const isProperty = key => key != 'children'
+    const isProperty = key => key !== 'children'
     Object.keys(element?.props)
         // filter the children field
         .filter(isProperty)
@@ -82,10 +104,11 @@ function createDom(element) {
 export default function render(element, container) {
 
     // create a root node
-    nextUnitOfWork = {
+    wipRoot = {
         dom: container,
         props: {
             children: [element]
         }
     }
+    nextUnitOfWork = wipRoot
 }
